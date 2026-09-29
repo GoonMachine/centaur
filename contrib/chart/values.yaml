@@ -110,9 +110,6 @@ console:
   # Public URL users reach in a browser (e.g. https://console.example.com), used
   # as CENTAUR_CONSOLE_PUBLIC_URL. Set this when console is exposed behind
   # Tailscale/Ingress so MCP OAuth issuer metadata and JWT validation agree.
-  # When set and console.chat.enabled is true, the slackbotv2 deployment also
-  # links the first assistant message in a Slack thread to the Console session
-  # view. Leave empty to omit the link.
   publicUrl: ""
   # Additional exact Host headers accepted by Rails Host Authorization. Use for
   # service DNS names that differ from the chart's short in-cluster URL;
@@ -124,16 +121,6 @@ console:
   # Break-glass email/password login. Disable when console is reachable from
   # the public internet and SSO is configured.
   passwordLoginEnabled: true
-  # Console's browser-based chat UI is deprecated and will be removed in
-  # October. Disable it to hide chat navigation and reject its HTTP routes.
-  chat:
-    enabled: true
-  # When enabled, every authenticated Console user can browse conversations
-  # originating in public Slack channels. Private channels and DMs remain
-  # owner-only. Requires apiRs.etl.slack.enabled so channel privacy is synced;
-  # visibility fails closed without that catalog. Individual chats can still
-  # be shared by their owner from the Threads UI.
-  publicSlackThreadsEnabled: false
   # Optional SSO admission policy. When non-empty, only identities whose email
   # domain matches this list can sign in through Google, Slack, or Okta.
   ssoEmailDomains: []
@@ -485,6 +472,41 @@ proxySync:
     annotations: {}
   resources: {}
 
+# Standalone company-context ingestion service. The first version indexes PDFs
+# from Google Drive into its private system and data schemas. Disabled while the
+# corpus is validated alongside the legacy Python workflows.
+experimentalCompanyContext:
+  enabled: false
+  replicaCount: 1
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  image:
+    repository: centaur-company-context
+    tag: latest
+    pullPolicy: Always
+  port: 8080
+  # Rails Console OAuth app whose live per-user Google broker credentials are
+  # synchronized. The embeddings API key comes from OPENAI_API_KEY in the
+  # shared Kubernetes Secret.
+  googleOauthAppSlug: google
+  scanIntervalSeconds: 300
+  drivePageSize: 100
+  maxScanPages: 10
+  maxPdfBytes: 26214400
+  maxExtractedBytes: 52428800
+  extractionTimeoutSeconds: 120
+  chunkChars: 6000
+  workerConcurrency: 4
+  embeddingsModel: text-embedding-3-small
+  embeddingsDimensions: 1536
+  extraEnv: {}
+  metrics:
+    scrapeAnnotations: true
+    path: /metrics
+    annotations: {}
+  resources: {}
+
 # Rust session control plane (services/api-rs). Owns sessions, agent-k8s
 # sandboxes (via the agents.x-k8s.io Sandbox CRD), and the per-sandbox
 # iron-proxy/firewall.
@@ -513,9 +535,9 @@ apiRs:
   # Controls whether a missing automatically derived session principal may be
   # created. "preapproved" admits only principals already present in the
   # Console; missing requester principals are omitted rather than created.
-  # HTTP ingress families with unpredictable per-thread principals, including
-  # new Console chats, are incompatible with preapproved mode. Internal
-  # workflow/MCP sessions use separate principal-provisioning paths.
+  # HTTP ingress families with unpredictable per-thread principals are
+  # incompatible with preapproved mode. Internal workflow/MCP sessions use
+  # separate principal-provisioning paths.
   sessionPrincipalAdmission: automatic
   # Expose the experimental centaur MCP dispatcher (currently action=list).
   mcpV2Enabled: false
